@@ -15,3 +15,5 @@ http-server resource for fivem.
 __static/__ Static assets
 
 __index.lua__ Server routes and cache
+
+__Original:__ https://github.com/throwarray/fivem-http-server
