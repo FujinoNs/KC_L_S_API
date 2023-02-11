@@ -1,0 +1,36 @@
+*ตัวอย่างเพิ่ม Blacklist โฟลเดอร์*
+citizen\common\action\ -> ลงท้ายด้วย \ จะเป็นการ Blacklist โฟลเดอร์
+
+*ตัวอย่างเพิ่ม Blacklist โฟลเดอร์หลายๆโฟลเดอร์*
+citizen\common\forder1\
+citizen\common\forder2\
+citizen\common\forder3\
+
+*ตัวอย่างเพิ่ม Blacklist ไฟล์*
+citizen\common\action\interrelations.meta -> ลงท้ายด้วยนามสกุลไฟล์ จะเป็นการ Blacklist ไฟล์
+
+*ตัวอย่างเพิ่ม Blacklist ไฟล์หลายๆไฟล์*
+citizen\common\action\file1.meta
+citizen\common\action\file2.meta
+citizen\common\action\file3.meta
+
+*****************************************************************************************************
+*****************************************************************************************************
+
+*ตัวอย่างเพิ่ม Blacklist โฟลเดอร์ กรณีโฟลเดอร์ที่ต้องการ Blacklist ที่ไม่ได้อยู่ในโฟลเดอร์ย่อย*
+plugins\ -> ลงท้ายด้วย \ จะเป็นการ Blacklist โฟลเดอร์ที่ไม่ได้อยู่ในโฟลเดอร์ย่อย
+
+*ตัวอย่างเพิ่ม Blacklist โฟลเดอร์หลายๆโฟลเดอร์*
+forder1\
+forder2\
+forder3\
+
+*ตัวอย่างเพิ่ม Blacklist ไฟล์ กรณีไฟล์ที่ต้องการ Blacklist ที่ไม่ได้อยู่ในโฟลเดอร์ย่อย*
+CitizenFX.ini -> ลงท้ายด้วยนามสกุลไฟล์ จะเป็นการ Blacklist ไฟล์
+
+*ตัวอย่างเพิ่ม Blacklist ไฟล์หลายๆไฟล์*
+file1.meta
+file2.meta
+file3.meta
+
+หากนำระบบ CitizenBlacklist ไปใช้งาน โปรดลบข้อความในนี้ออกทั้งหมดก่อน และอย่างเพิ่มข้อความอะไรก็ตามที่ไม่ใช่ ไฟล์ หรือ โฟลเดอร์
