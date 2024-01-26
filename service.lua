@@ -1,14 +1,9 @@
-ESX = nil
+-- ESX = nil
 SERVICE = {}
 
 local connected = 0
 local _DateTime
 local _DateTimeInt
-local _resourcepath = GetResourcePath(GetCurrentResourceName())
-local _path_data_blacklist = string.sub(_resourcepath, 0, -12) .. GetCurrentResourceName() ..
-                                 "/data/checkcitizen_blacklist.txt"
--- local json = require("@KC_L_S_API/dkjson.lua")
-
 -- Get Date and Time Now
 Citizen.CreateThread(function()
     while true do
@@ -29,43 +24,6 @@ ROUTES = {
             kc_playercount = GetNumPlayerIndices(),
             kc_playermax = GetConvarInt("sv_maxclients")
         }))
-    end,
-    ["/dropplayer"] = function(req, res)
-        local body = req.body
-        local query = req.query
-        local key_api = ""
-        local steamId = ""
-        local mes = ""
-        local mescmd = ""
-
-        if body and req.method == "POST" then
-            key_api = body.key_api
-            steamId = body.steamId
-            mes = body.mes
-            mescmd = body.mescmd
-        end
-
-        if ((key_api and query.key_api) or key_api) == Config.KeyAPI then
-            if ((query and query.steamId) or steamId) == "" then
-                res.send("steamId_null")
-            else
-                if Config.UseDropPlayerAPI == true then
-                    Wait(100)
-                    DropPlayer_GetNameBySteamId(((query and query.steamId) or steamId), ((query and query.mes) or mes),
-                        ((query and query.mescmd) or mescmd))
-                    res.send(((query and query.steamId) or steamId))
-                else
-                    res.send("dropplayer_api_is_not_enabled")
-                end
-            end
-        else
-            res.send("key_is_invalid")
-        end
-
-        steamId = ""
-        key_api = ""
-        mes = ""
-        mescmd = ""
     end,
     ["/setlauncherstatus"] = function(req, res)
         local body = req.body
@@ -108,17 +66,16 @@ ROUTES = {
         steamId = ""
         message = ""
     end,
-    ["/getlauncherstatus"] = function(req, res)
+    ["/getplayer"] = function(req, res)
         local body = req.body
         local query = req.query
         local key_api = ""
         local steamId = ""
 
-        if body and req.method == "POST" then
+        if body and req.method == "GET" then
             key_api = body.key_api
             steamId = body.steamId
         end
-
         if ((key_api and query.key_api) or key_api) == Config.KeyAPI then
             if ((query and query.steamId) or steamId) == "" then
                 res.send("steamId_null")
@@ -126,24 +83,12 @@ ROUTES = {
                 Wait(100)
 
                 MySQL.ready(function()
-                    MySQL.Async.fetchScalar("SELECT launcher_status FROM kc_launcher_service WHERE identifier = @data",
-                        {
-                            ["@data"] = (query and query.steamId) or steamId
-                        }, function(status)
-                            if status == nil then
-                                res.send(json.encode({
-                                    _status = true,
-                                    steamID = (query and query.steamId) or steamId,
-                                    launcherstatus = "null"
-                                }))
-                            else
-                                res.send(json.encode({
-                                    _status = true,
-                                    steamID = (query and query.steamId) or steamId,
-                                    launcherstatus = status
-                                }))
-                            end
-                        end)
+                    MySQL.Async.fetchAll("SELECT * FROM kc_launcher_service WHERE identifier = @data", {
+                        ["@data"] = (query and query.steamId) or steamId
+                    }, function(result)
+                        local dataPlayer = result[1]
+                        res.send(json.encode(dataPlayer))
+                    end)
                 end)
             end
         else
@@ -152,6 +97,7 @@ ROUTES = {
 
         key_api = ""
         steamId = ""
+
     end
 }
 
@@ -283,7 +229,10 @@ local function OnPlayerConnecting(name, setKickReason, deferrals)
                     local dataPlayer = result[1]
                     local getTime = ostime - dataPlayer.timestamp
                     if getTime > Config.TimeLimitLauncherOffline then
+                        SetLauncherStatus_UpdatekdataSQL(steamIdentifier, 'timeout', 'Timeout', dataPlayer.timestamp)
+
                         deferrals.done(Config.Message_Player_Timeout)
+
                         if Config.EnabledLog == true then
                             print("^3PlayerConnecting.ConnectFailed: SteamID: " .. steamIdentifier ..
                                       " Reason:  Timeout " .. getTime .. " second (Time limit: " ..
@@ -291,11 +240,14 @@ local function OnPlayerConnecting(name, setKickReason, deferrals)
                         end
                     else
                         if dataPlayer.launcher_status == "connectbylauncher" then
+                            SetLauncherStatus_UpdatekdataSQL(steamIdentifier, 'connecting', dataPlayer.messages,
+                                os.time())
                             deferrals.done()
                             if Config.EnabledLog == true then
                                 print("^2PlayerConnecting: SteamID: '" .. steamIdentifier .. "'^7")
                             end
                         elseif dataPlayer.status == "offline" then
+
                             deferrals.done(string.format("[ " .. Config.Title .. " ] - " ..
                                                              Config.Message_PlayerConnecting_Offline))
                             if Config.EnabledLog == true then
@@ -330,53 +282,13 @@ local function OnPlayerConnecting(name, setKickReason, deferrals)
                             else
                                 deferrals.done()
                             end
-                        elseif dataPlayer.status == "datablacklistischange" then
-                            if (Config.UseCheckCitizenBlacklist == true) then
-                                deferrals.done(string.format(
-                                    "[ " .. Config.Title .. " ] - " ..
-                                        Config.Message_PlayerConnecting_FileBlacklistIsChange))
-                                if Config.EnabledLog == true then
-                                    print("^3PlayerConnecting.ConnectFailed: SteamID: '" .. steamIdentifier ..
-                                              "' Status Launcher: 'Detected file data blacklist is schange'^7")
-                                end
-                                FileBlacklistIsChange_Connecting(steamIdentifier)
-                            else
-                                deferrals.done()
-                            end
-                        elseif dataPlayer.status == "serviceRuntimeMD5Error" then
+                        elseif dataPlayer.status == "timeout" then
                             deferrals.done(string.format("[ " .. Config.Title .. " ] - " ..
-                                                             Config.Message_ServiceRuntimeMD5Error))
+                                                             Config.Message_Player_Timeout))
                             if Config.EnabledLog == true then
                                 print("^3PlayerConnecting.ConnectFailed: SteamID: '" .. steamIdentifier ..
-                                          "' Status Launcher: 'Service Runtime File MD5 does not match!'^7")
-                            end
-                        elseif dataPlayer.status == "serviceRuntimeFileNotFound" then
-                            deferrals.done(string.format("[ " .. Config.Title .. " ] - " ..
-                                                             Config.Message_ServiceRuntimeFileNotFound))
-                            if Config.EnabledLog == true then
-                                print("^3PlayerConnecting.ConnectFailed: SteamID: '" .. steamIdentifier ..
-                                          "' Status Launcher: 'File Service Runtime not found!'^7")
-                            end
-                        elseif dataPlayer.status == "serviceRuntimeStartError" then
-                            deferrals.done(string.format("[ " .. Config.Title .. " ] - " ..
-                                                             Config.Message_ServiceRuntimeStartError))
-                            if Config.EnabledLog == true then
-                                print("^3PlayerConnecting.ConnectFailed: SteamID: '" .. steamIdentifier ..
-                                          "' Status Launcher: 'Failed to run file Service Runtime'^7")
-                            end
-                        elseif dataPlayer.status == "serviceRuntimeNotRuning" then
-                            deferrals.done(string.format("[ " .. Config.Title .. " ] - " ..
-                                                             Config.Message_ServiceRuntimeNotRuning))
-                            if Config.EnabledLog == true then
-                                print("^3PlayerConnecting.ConnectFailed: SteamID: '" .. steamIdentifier ..
-                                          "' Status Launcher: 'Service Runtime Not Runing'^7")
-                            end
-                        elseif dataPlayer.status == "serviceRuntimeOffline" then
-                            deferrals.done(string.format("[ " .. Config.Title .. " ] - " ..
-                                                             Config.Message_ServiceRuntimeOffline))
-                            if Config.EnabledLog == true then
-                                print("^3PlayerConnecting.ConnectFailed: SteamID: '" .. steamIdentifier ..
-                                          "' Status Launcher: 'Service Runtime Offline'^7")
+                                          "' Status Launcher: 'Timeout'^7")
+
                             end
                         else
                             deferrals.done(Config.Message_PlayerConnecting_StatusNotMatch)
@@ -448,6 +360,8 @@ Citizen.CreateThread(function()
                         local getTime = ostime - dataPlayer.timestamp
 
                         if getTime > Config.TimeLimitLauncherOffline then
+                            SetLauncherStatus_UpdatekdataSQL(steamIdentifier, 'timeout', 'Timeout', dataPlayer.timestamp)
+
                             DropPlayer(playerId, Config.Message_Player_Timeout)
                             if Config.EnabledLog == true then
                                 print("^3LoopCheckPlayer.DropPlayer: Player name: '" .. nameIngame .. "' ID: '" ..
@@ -455,7 +369,13 @@ Citizen.CreateThread(function()
                                           " second (Time limit: " .. Config.TimeLimitLauncherOffline .. " second)^7")
                             end
                         else
-                            if dataPlayer.launcher_status == "connectbylauncher" then
+                            if dataPlayer.launcher_status == "connected" then
+                                -- SetLauncherStatus_UpdatekdataSQL(steamIdentifier, 'connected', '', os.time())
+
+                            elseif dataPlayer.launcher_status == "connecting" then
+                                SetLauncherStatus_UpdatekdataSQL(steamIdentifier, 'connected', dataPlayer.messages,
+                                    dataPlayer.timestamp)
+
                             elseif dataPlayer.launcher_status == "exitlauncher" then
                                 DropPlayer(playerId, "[ " .. Config.Title .. " ] - " ..
                                     Config.Message_PlayerConnecting_ExitLauncher)
@@ -478,58 +398,6 @@ Citizen.CreateThread(function()
                                     end
                                     DetectedBlacklist_Ingame(steamIdentifier, nameIngame, playerId, dataPlayer.messages)
                                 end
-                            elseif dataPlayer.launcher_status == "datablacklistischange" then
-                                if (Config.UseCheckCitizenBlacklist == true) then
-                                    DropPlayer(playerId, "[ " .. Config.Title .. " ] - " ..
-                                        Config.Message_PlayerConnecting_FileBlacklistIsChange)
-                                    if Config.EnabledLog == true then
-                                        print(
-                                            "^3LoopCheckPlayer.DropPlayer: Player name: '" .. nameIngame .. "' ID: '" ..
-                                                playerId ..
-                                                "' was kicked from server for reason: 'Detected file data blacklist is schange'^7")
-                                    end
-                                    FileBlacklistIsChange_Ingame(steamIdentifier, nameIngame, playerId)
-                                end
-                            elseif dataPlayer.launcher_status == "serviceRuntimeMD5Error" then
-                                DropPlayer(playerId,
-                                    "[ " .. Config.Title .. " ] - " .. Config.Message_ServiceRuntimeMD5Error)
-                                if Config.EnabledLog == true then
-                                    print("^3LoopCheckPlayer.DropPlayer: Player name: '" .. nameIngame .. "' ID: '" ..
-                                              playerId ..
-                                              "' was kicked from server for reason: 'Service Runtime File MD5 does not match!'^7")
-                                end
-                            elseif dataPlayer.launcher_status == "serviceRuntimeFileNotFound" then
-                                DropPlayer(playerId,
-                                    "[ " .. Config.Title .. " ] - " .. Config.Message_ServiceRuntimeFileNotFound)
-                                if Config.EnabledLog == true then
-                                    print("^3LoopCheckPlayer.DropPlayer: Player name: '" .. nameIngame .. "' ID: '" ..
-                                              playerId ..
-                                              "' was kicked from server for reason: 'File Service Runtime not found!'^7")
-                                end
-                            elseif dataPlayer.launcher_status == "serviceRuntimeStartError" then
-                                DropPlayer(playerId,
-                                    "[ " .. Config.Title .. " ] - " .. Config.Message_ServiceRuntimeStartError)
-                                if Config.EnabledLog == true then
-                                    print("^3LoopCheckPlayer.DropPlayer: Player name: '" .. nameIngame .. "' ID: '" ..
-                                              playerId ..
-                                              "' was kicked from server for reason: 'Failed to run file Service Runtime'^7")
-                                end
-                            elseif dataPlayer.launcher_status == "serviceRuntimeNotRuning" then
-                                DropPlayer(playerId,
-                                    "[ " .. Config.Title .. " ] - " .. Config.Message_ServiceRuntimeNotRuning)
-                                if Config.EnabledLog == true then
-                                    print("^3LoopCheckPlayer.DropPlayer: Player name: '" .. nameIngame .. "' ID: '" ..
-                                              playerId ..
-                                              "' was kicked from server for reason: 'Service Runtime Not Runing'^7")
-                                end
-                            elseif dataPlayer.launcher_status == "serviceRuntimeOffline" then
-                                DropPlayer(playerId,
-                                    "[ " .. Config.Title .. " ] - " .. Config.Message_ServiceRuntimeOffline)
-                                if Config.EnabledLog == true then
-                                    print("^3LoopCheckPlayer.DropPlayer: Player name: '" .. nameIngame .. "' ID: '" ..
-                                              playerId ..
-                                              "' was kicked from server for reason: 'Service Runtime Offline'^7")
-                                end
                             else
                                 DropPlayer(playerId,
                                     "[ " .. Config.Title .. " ] - " .. Config.Message_PlayerPlaying_NotAllowed)
@@ -548,7 +416,7 @@ Citizen.CreateThread(function()
 end)
 
 print("^8======================================================================^5")
-print("KC Launcher Service API (V3.0.0) Created by Kroekchai KC (Fujino N's)")
+print("KC Launcher Service API (V4.0.0) Created by Kroekchai KC (Fujino N's)")
 print("Website https://github.com/FujinoNs/KC_L_S_API")
 print("Thank you for using KC Launcher :)")
 print("Powered by https://github.com/throwarray/fivem-http-server")
